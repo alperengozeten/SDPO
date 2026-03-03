@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Usage: ./run_sdpo.sh [--dry-run]
 
@@ -14,22 +14,26 @@ fi
 
 # Base settings
 CONFIG_NAME="sdpo"
-BASE_JOB_NAME="rlvr"
+BASE_JOB_NAME="sdpo-lcb-rich"
+PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd )"
+OUTPUT_DIR="$PROJECT_ROOT/output/SDPO"
+mkdir -p "$OUTPUT_DIR"
 
 DATA_PATHS=(
     "datasets/lcb_v6"
 )
 
 # Fixed Slurm resources
-ACCOUNT="a156"
+ACCOUNT="oymak_owned1"
 NODES=1
-PARTITION="normal"
-TIME="12:00:00"
-ENV="sdpo"
+PARTITION="spgpu2"
+TIME="4-00:00:00"
 NTASKS_PER_NODE=1
-GPUS_PER_NODE=4
-MEM=460000
-CPUS_PER_TASK=288
+GPUS=2
+MEM="256G"
+CPUS_PER_TASK=16
+MAIL_USER="alperen@umich.edu"
+MAIL_TYPE="BEGIN,END,FAIL"
 
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
@@ -43,7 +47,7 @@ DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
 ALPHAS=(1.0)
 
 MODEL_PATHS=(
-    "Qwen/Qwen3-8B"
+    "Qwen/Qwen3-1.7B"
 )
 # =============================================================================
 # JOB SUBMISSION FUNCTION
@@ -57,11 +61,11 @@ submit_job() {
     # Define the environment setup and command execution
     # We use the user's home directory dynamically
     local setup_cmds="pip install word2number latex2sympy2 math-verify[antlr4_9_3]==0.8.0; \
-pip install -e /users/$USER/SDPO; \
+pip install -e $PROJECT_ROOT; \
 pip install --upgrade wandb; \
-export PYTHONPATH=/users/$USER/SDPO:\$PYTHONPATH"
+export PYTHONPATH=$PROJECT_ROOT:\$PYTHONPATH"
 
-    local run_cmd="bash /users/$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
+    local run_cmd="bash $PROJECT_ROOT/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
 
     local wrapped_cmd="srun bash -c '$setup_cmds; $run_cmd'"
 
@@ -72,13 +76,14 @@ export PYTHONPATH=/users/$USER/SDPO:\$PYTHONPATH"
         --nodes="$NODES"
         --partition="$PARTITION"
         --time="$TIME"
-        --environment="$ENV"
+        --mail-user="$MAIL_USER"
+        --mail-type="$MAIL_TYPE"
         --ntasks-per-node="$NTASKS_PER_NODE"
-        --gpus-per-node="$GPUS_PER_NODE"
+        --gres="gpu:$GPUS"
         --mem="$MEM"
         --cpus-per-task="$CPUS_PER_TASK"
-        --output="/users/$USER/output/SDPO/%j.log"
-        --error="/users/$USER/output/SDPO/%j.err"
+        --output="$OUTPUT_DIR/%x-%j.log"
+        --error="$OUTPUT_DIR/%x-%j.err"
         --wrap="$wrapped_cmd"
     )
 
@@ -109,8 +114,11 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
 
                             # 2. Construct the arguments string to pass to the training script
                             # Format: key=value key2=value2 ...
-                            ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
+ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
 trainer.group_name=SDPO-rich-feedback \
+trainer.nnodes=$NODES \
+trainer.n_gpus_per_node=$GPUS \
+ray_kwargs.ray_init.num_cpus=$CPUS_PER_TASK \
 actor_rollout_ref.rollout.n=$ROLLOUT_BATCH_SIZE \
 actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.optim.lr=$LR \
@@ -132,4 +140,3 @@ actor_rollout_ref.rollout.val_kwargs.n=4"
         done
     done
 done
-

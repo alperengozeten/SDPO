@@ -45,6 +45,8 @@ EXP_NAME="LOCAL-SDPO-train${TRAIN_BATCH_SIZE}-alpha${ALPHA}-rollout${ROLLOUT_BAT
 
 ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
 trainer.group_name=SDPO-local \
+trainer.nnodes=1 \
+trainer.n_gpus_per_node=$N_GPUS_PER_NODE \
 actor_rollout_ref.rollout.n=$ROLLOUT_BATCH_SIZE \
 actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.optim.lr=$LR \
